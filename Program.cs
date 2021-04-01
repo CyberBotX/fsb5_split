@@ -81,14 +81,8 @@ namespace fsb5_split
 				return;
 			}
 
-			string outputDirectory;
-			if (args.Length == 2)
-				outputDirectory = args[1];
-			else
-			{
-				outputDirectory = Path.ChangeExtension(args[0], "");
-				outputDirectory = outputDirectory.Remove(outputDirectory.Length - 1);
-			}
+			string baseName = Path.GetFileNameWithoutExtension(args[0]);
+			string outputDirectory = args.Length == 2 ? args[1] : Path.Combine(Path.GetDirectoryName(args[0])!, baseName);
 
 			if (!Directory.Exists(outputDirectory))
 				Directory.CreateDirectory(outputDirectory);
