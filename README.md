@@ -17,6 +17,8 @@ Additionally, you can include support for outputting an unlooped .wav file for e
 under the Build settings of the project's properties. (Alternatively, just use the *Debug with FMOD* or
 *Release with FMOD* build configurations.)
 
+**NOTE:** Having FMOD output to a .wav is not well tested and may produce .wav files that are not correct.
+
 ## Running
 
 The tool is a C# console tool. You will need to run it from the command line. Syntax is:
