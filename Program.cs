@@ -25,10 +25,13 @@ namespace fsb5_split
 		}
 
 		static Func<BinaryReader, uint> fr32 = null!;
+		static Func<BinaryReader, ulong> fr64 = null!;
 
 		static uint fri32(BinaryReader br) => br.ReadUInt32();
+		static ulong fri64(BinaryReader br) => br.ReadUInt64();
 
 		static uint frb32(BinaryReader br) => BitConverter.ToUInt32(br.ReadBytes(4).Reverse().ToArray(), 0);
+		static ulong frb64(BinaryReader br) => BitConverter.ToUInt64(br.ReadBytes(8).Reverse().ToArray(), 0);
 
 		static int CheckSignEndian(BinaryReader br)
 		{
@@ -39,11 +42,13 @@ namespace fsb5_split
 			if (sign[0] == 'F' && sign[1] == 'S' && sign[2] == 'B')
 			{
 				fr32 = fri32;
+				fr64 = fri64;
 				return sign[3];
 			}
 			else if (sign[1] == 'B' && sign[2] == 'S' && sign[3] == 'F')
 			{
 				fr32 = frb32;
+				fr64 = frb64;
 				return sign[0];
 			}
 			else
@@ -69,7 +74,41 @@ namespace fsb5_split
 			return (int)(br.BaseStream.Position - oldPosition);
 		}
 
-		static readonly Func<uint, uint> GET_FSB5_OFFSET = X => (X >> 7) * 0x20;
+		static readonly Func<ulong, uint> GET_FSB5_OFFSET = X => (uint)((X >> 7) & 0x7FFFFFF) << 5;
+
+		static void InternalCopyStream(this Stream input, Stream? output, int bufferSize, int bytesToWrite)
+		{
+			if (output is null)
+				throw new ArgumentException("Output Stream was null", nameof(output));
+			if (!input.CanRead && !input.CanWrite)
+				throw new ObjectDisposedException("input", "Stream closed");
+			if (!output.CanRead && !output.CanWrite)
+				throw new ObjectDisposedException("output", "Stream closed");
+			if (!input.CanRead)
+				throw new NotSupportedException("Unreadable input Stream");
+			if (!output.CanWrite)
+				throw new NotSupportedException("Unwriteable output Stream");
+			byte[] buffer = new byte[bufferSize];
+			int totalWritten = 0;
+			while (true)
+			{
+				int toRead = Math.Min(bufferSize, bytesToWrite - totalWritten);
+				if (toRead <= 0)
+					break;
+				int read = input.Read(buffer, 0, toRead);
+				if (read <= 0)
+					break;
+				output.Write(buffer, 0, read);
+				totalWritten += read;
+			}
+		}
+
+		public static void CopyStream(this Stream? input, Stream? output, int bytesToWrite)
+		{
+			if (input is null)
+				throw new ArgumentException("Input Stream was null", nameof(input));
+			input.InternalCopyStream(output, 81920, bytesToWrite);
+		}
 
 		static void Main(string[] args)
 		{
@@ -110,41 +149,29 @@ namespace fsb5_split
 
 			for (int i = 0; i < fsb5Header.numSamples; ++i)
 			{
-				uint offset = fr32(br);
+				ulong offset = fr64(br);
 
-				uint type = offset & 0x7F;
-				byte[] shdrData = BitConverter.GetBytes(type);
-				shdrData = shdrData.Concat(br.ReadBytes(4)).ToArray();
+				uint type = (uint)(offset & 0x7F);
+				byte[] shdrData = BitConverter.GetBytes(offset & ~(0x7FFFFFFUL << 5)); // This will basically make it so the offset becomes 0 for the new split file
 				offset = GET_FSB5_OFFSET(offset); // This is the offset into the file section
 
-				long currOffset;
 				while ((type & 1) == 1)
 				{
 					uint t32 = fr32(br);
 					shdrData = shdrData.Concat(BitConverter.GetBytes(t32)).ToArray();
 					type = t32 & 1;
 					int len = (int)((t32 & 0xFFFFFF) >> 1);
-					t32 >>= 24;
-					currOffset = br.BaseStream.Position;
 					shdrData = shdrData.Concat(br.ReadBytes(len)).ToArray();
-					currOffset += len;
-					br.BaseStream.Position = currOffset;
 				}
 
-				currOffset = br.BaseStream.Position;
-				uint size;
-				if (br.BaseStream.Position < nameOffset)
-				{
-					size = fr32(br);
-					size = size == 0 ? (uint)br.BaseStream.Length : GET_FSB5_OFFSET(size) + baseOffset;
-				}
-				else
-					size = (uint)br.BaseStream.Length;
+				long currOffset = br.BaseStream.Position;
+				uint size = br.BaseStream.Position < nameOffset && i + 1 != fsb5Header.numSamples ? GET_FSB5_OFFSET(fr64(br)) + baseOffset : (uint)br.BaseStream.Length;
 				br.BaseStream.Position = currOffset;
-				fileOffset = baseOffset + offset;
+				fileOffset = (uint)(baseOffset + offset);
 				size -= fileOffset;
 
 				string name = $"{baseName}_{i:X8}";
+				string internalName = "";
 				if (fsb5Header.nameSize != 0)
 				{
 					currOffset = br.BaseStream.Position;
@@ -157,6 +184,7 @@ namespace fsb5_split
 							break;
 						name += (char)c;
 					} while (true);
+					internalName = name;
 					br.BaseStream.Position = currOffset;
 				}
 
@@ -173,7 +201,7 @@ namespace fsb5_split
 					bw.Write(fsb5Header.version);
 					bw.Write(1);
 					bw.Write(shdrData.Length);
-					int fullNameSize = (int)Math.Ceiling((name.Length + 5) / 16.0) * 16;
+					int fullNameSize = (int)Math.Ceiling((internalName.Length + 5) / 16.0) * 16;
 					bw.Write(fullNameSize);
 					bw.Write(size);
 					bw.Write(fsb5Header.mode);
@@ -184,13 +212,12 @@ namespace fsb5_split
 					bw.Write(fsb5Header.dummy);
 					bw.Write(shdrData);
 					bw.Write(4);
-					bw.Write(Encoding.ASCII.GetBytes(name));
+					bw.Write(Encoding.ASCII.GetBytes(internalName));
 					bw.Write((byte)0);
-					for (int j = name.Length + 5; j < fullNameSize; ++j)
+					for (int j = internalName.Length + 5; j < fullNameSize; ++j)
 						bw.Write((byte)0);
-					br.BaseStream.CopyTo(bw.BaseStream, (int)size);
+					br.BaseStream.CopyStream(bw.BaseStream, (int)size);
 				}
-				fileOffset += size;
 				br.BaseStream.Position = currOffset;
 
 #if FMOD
