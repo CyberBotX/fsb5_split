@@ -144,7 +144,7 @@ namespace fsb5_split
 				fileOffset = baseOffset + offset;
 				size -= fileOffset;
 
-				string name = "";
+				string name = $"{baseName}_{i:X8}";
 				if (fsb5Header.nameSize != 0)
 				{
 					currOffset = br.BaseStream.Position;
