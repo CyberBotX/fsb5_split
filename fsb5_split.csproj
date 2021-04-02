@@ -24,9 +24,9 @@
     <Optimize>true</Optimize>
   </PropertyGroup>
   <ItemGroup Condition="$(DefineConstants.Contains('FMOD'))">
-    <Compile Include="..\..\..\..\..\Program Files (x86)\FMOD SoundSystem\FMOD Studio API Windows\api\lowlevel\inc\fmod.cs" Link="fmod.cs" />
-    <Compile Include="..\..\..\..\..\Program Files (x86)\FMOD SoundSystem\FMOD Studio API Windows\api\lowlevel\inc\fmod_dsp.cs" Link="fmod_dsp.cs" />
-    <None Include="..\..\..\..\..\Program Files %28x86%29\FMOD SoundSystem\FMOD Studio API Windows\api\lowlevel\lib\fmod.dll" Link="fmod.dll">
+    <Compile Include="C:\Program Files (x86)\FMOD SoundSystem\FMOD Studio API Windows\api\lowlevel\inc\fmod.cs" Link="fmod.cs" />
+    <Compile Include="C:\Program Files (x86)\FMOD SoundSystem\FMOD Studio API Windows\api\lowlevel\inc\fmod_dsp.cs" Link="fmod_dsp.cs" />
+    <None Include="C:\Program Files %28x86%29\FMOD SoundSystem\FMOD Studio API Windows\api\lowlevel\lib\fmod.dll" Link="fmod.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
