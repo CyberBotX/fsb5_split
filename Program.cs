@@ -145,14 +145,12 @@ namespace fsb5_split
 			uint fileOffset = (uint)(nameOffset + fsb5Header.nameSize);
 			uint baseOffset = fileOffset;
 
-			bool pcmEndian = (fsb5Header.zero[4] & 1) == 1;
-
 			for (int i = 0; i < fsb5Header.numSamples; ++i)
 			{
 				ulong offset = fr64(br);
 
 				uint type = (uint)(offset & 0x7F);
-				byte[] shdrData = BitConverter.GetBytes(offset & ~(0x7FFFFFFUL << 5)); // This will basically make it so the offset becomes 0 for the new split file
+				byte[] shdrData = BitConverter.GetBytes(offset & ~(0x7FFFFFFUL << 7)); // This will basically make it so the offset becomes 0 for the new split file
 				offset = GET_FSB5_OFFSET(offset); // This is the offset into the file section
 
 				while ((type & 1) == 1)
@@ -160,8 +158,7 @@ namespace fsb5_split
 					uint t32 = fr32(br);
 					shdrData = shdrData.Concat(BitConverter.GetBytes(t32)).ToArray();
 					type = t32 & 1;
-					int len = (int)((t32 & 0xFFFFFF) >> 1);
-					shdrData = shdrData.Concat(br.ReadBytes(len)).ToArray();
+					shdrData = shdrData.Concat(br.ReadBytes((int)((t32 >> 1) & 0xFFFFFF))).ToArray();
 				}
 
 				long currOffset = br.BaseStream.Position;
@@ -174,6 +171,7 @@ namespace fsb5_split
 				string internalName = "";
 				if (fsb5Header.nameSize != 0)
 				{
+					name = "";
 					currOffset = br.BaseStream.Position;
 					br.BaseStream.Position = nameOffset + i * 4;
 					br.BaseStream.Position = nameOffset + fr32(br);
@@ -190,12 +188,10 @@ namespace fsb5_split
 
 				Console.Write($"Processing {name}...");
 
-				string outputFilename = Path.Combine(outputDirectory, $"{name}.fsb");
-
 				currOffset = br.BaseStream.Position;
 				br.BaseStream.Position = fileOffset;
 				// Get file
-				using (var bw = new BinaryWriter(File.Create(outputFilename)))
+				using (var bw = new BinaryWriter(File.Create(Path.Combine(outputDirectory, $"{name}.fsb"))))
 				{
 					bw.Write(Encoding.ASCII.GetBytes("FSB5"));
 					bw.Write(fsb5Header.version);
@@ -224,11 +220,9 @@ namespace fsb5_split
 				// Also use the FMOD API to output to a WAV file
 				var result = FMOD.Factory.System_Create(out var system);
 
-				string outputWAV = Path.Combine(outputDirectory, $"{name}.wav");
-
 				result = system.setOutput(FMOD.OUTPUTTYPE.WAVWRITER);
 
-				result = system.init(32, FMOD.INITFLAGS.NORMAL, System.Runtime.InteropServices.Marshal.StringToHGlobalAnsi(outputWAV));
+				result = system.init(32, FMOD.INITFLAGS.NORMAL, System.Runtime.InteropServices.Marshal.StringToHGlobalAnsi(Path.Combine(outputDirectory, $"{name}.wav")));
 
 				result = system.createSound(args[0], FMOD.MODE._2D | FMOD.MODE.LOOP_OFF | FMOD.MODE.CREATESTREAM, out var sound);
 
